@@ -6,20 +6,38 @@ import (
 	"log"
 )
 
+const Database = "SSI"
+
+type DBInfo struct {
+	Addrs    []string
+	User     string
+	Password string
+	Database string
+}
+
 type Resource struct {
 	session *mgo.Session
+}
+
+func NewDBInfo(addrs []string, user, password, dbName string) *DBInfo {
+	return &DBInfo{
+		Addrs:    addrs,
+		User:     user,
+		Password: password,
+		Database: dbName,
+	}
 }
 
 func (d *Resource) GetSession() *mgo.Session {
 	return d.session.Copy()
 }
 
-func ConnectMongo() (*Resource, error) {
+func ConnectMongo(dbi *DBInfo) (*Resource, error) {
 	mgoDialInfo := &mgo.DialInfo{
-		Addrs:    []string{"localhost:27017"},
-		Username: "test",
-		Password: "test",
-		Database: "test",
+		Addrs:    dbi.Addrs,
+		Username: dbi.User,
+		Password: dbi.Password,
+		Database: dbi.Database,
 	}
 	mgoSession, err := mgo.DialWithInfo(mgoDialInfo)
 	if err != nil {

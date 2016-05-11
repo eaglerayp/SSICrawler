@@ -1,0 +1,9 @@
+[database]
+[database.mgo.default]
+  name = "Mgo"
+  user = "root"
+  password = "123"
+  database = "admin"
+  max_conn = 50
+  host = "localhost"
+  port = 27017

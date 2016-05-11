@@ -7,30 +7,38 @@
 package main
 
 import (
-	"flag"
-	"log"
-	// "net/url"
+	"Crawler/common"
+	"Crawler/dao"
 	"encoding/json"
+	"flag"
+	"fmt"
+	"github.com/gorilla/websocket"
+	"log"
 	"os"
 	"os/signal"
 	"time"
-
-	"Crawler/dao"
-	"github.com/gorilla/websocket"
 	// "gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
-
 func main() {
+	log.Println("Start: FXCM-SSI-WScrawler v1.0")
 	// config for mongodb
+	var cfgFile string
+	flag.StringVar(&cfgFile, "config", "./config.toml", "Path to Config File")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] <command> \n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
 
+	common.LoadConfig(cfgFile)
 	// setup connection to mongodb
-	d, err := dao.ConnectMongo()
+	d, err := dao.ConnectMongo(common.GetMgoDBInfo())
 	if err != nil {
 		panic(err)
 	}
-	log.Println("mgo resource:", d)
+	log.Println("Connecting to mongo successfully, start crawling data!")
 	flag.Parse()
 	log.SetFlags(0)
 
@@ -69,17 +77,27 @@ func main() {
 			}
 			ssiArray := ssiData["SSI"]
 			timeString := time.Now().Format(time.RFC3339)
+			session := d.GetSession()
+
 			for _, ssi := range ssiArray {
 				// use time.Now replace the SSI given time. lazy to parse the format
-				log.Println("SSI ", ssi["Symbol"], ":", ssi["SSIHistOrders"], "; time:", timeString)
+				// insert data to mongodb
+				collection := session.DB(dao.Database).C(ssi["Symbol"].(string))
+				data := bson.M{"SSIHistOrders": ssi["SSIHistOrders"], "Time": timeString}
+				err = collection.Insert(data)
+				if err != nil {
+					log.Println("SSI ", ssi["Symbol"], ":", ssi["SSIHistOrders"], "; time:", timeString)
+					log.Println("insert error:", err)
+				}
+
 			}
-			// insert data to mongodb
+			session.Close()
 
 			// sleep
-			time.Sleep(10 * time.Second)
-			log.Println("Sleep 10 Second")
-			// time.Sleep(1 * time.Hour)
-			// log.Println("Sleep 1 hour")
+			// time.Sleep(10 * time.Second)
+			// log.Println("Sleep 10 Second")
+			log.Println("Sleep 1 hour")
+			time.Sleep(1 * time.Hour)
 		}
 	}()
 
