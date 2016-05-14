@@ -22,7 +22,7 @@ import (
 )
 
 func main() {
-	log.Println(time.Now(), " Start: FXCM-SSI-WScrawler v1.0")
+	log.Println("Start: FXCM-SSI-WScrawler v1.0")
 	// config for mongodb
 	var cfgFile string
 	flag.StringVar(&cfgFile, "config", "./config.toml", "Path to Config File")
@@ -38,9 +38,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println(time.Now(), " Connecting to mongo successfully, start crawling data!")
+	log.Println("Connecting to mongo successfully, start crawling data!")
 	flag.Parse()
-	log.SetFlags(0)
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -90,7 +89,7 @@ func main() {
 		// time.Sleep(10 * time.Second)
 		// log.Println("Sleep 10 Second")
 		c.Close()
-		log.Println(time.Now(), " Sleep 1 hour")
+		log.Println(" Sleep 1 hour")
 		time.Sleep(1 * time.Hour)
 	}
 
