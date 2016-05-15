@@ -21,6 +21,44 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
+const fxcmUrl = "wss://streamssi.fxcorporate.com/streamssi/endpoint/EURUSD,GBPUSD,AUDUSD,USDCAD,NZDUSD,XAUUSD"
+
+func parseSSIData(c *websocket.Conn) ([]map[string]interface{}, error) {
+	_, message, err := c.ReadMessage()
+	if err != nil {
+		log.Println("read error:", err)
+		return nil, err
+	}
+	str := string(message[:])
+	// log.Printf("recv: %s", str)
+	str = str[4 : len(str)-1]
+
+	var ssiData map[string][]map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &ssiData); err != nil {
+		panic(err)
+	}
+	return ssiData["SSI"], nil
+}
+
+func saveDataToMongo(d *dao.Resource, ssiArray []map[string]interface{}) {
+	timeString := time.Now().Format(time.RFC3339)
+	session := d.GetSession()
+
+	for _, ssi := range ssiArray {
+		// use time.Now replace the SSI given time. lazy to parse the format
+		// insert data to mongodb
+		collection := session.DB(dao.Database).C(ssi["Symbol"].(string))
+		data := bson.M{"SSIHistOrders": ssi["SSIHistOrders"], "Time": timeString}
+		err := collection.Insert(data)
+		if err != nil {
+			log.Println("SSI ", ssi["Symbol"], ":", ssi["SSIHistOrders"], "; time:", timeString)
+			log.Println("insert error:", err)
+		}
+
+	}
+	session.Close()
+}
+
 func main() {
 	log.Println("Start: FXCM-SSI-WScrawler v1.0")
 	// config for mongodb
@@ -44,81 +82,47 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	// u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
-	// // log.Printf("connecting to %s", u.String())
-	fxcmUrl := "wss://streamssi.fxcorporate.com/streamssi/endpoint/EURUSD,GBPUSD,AUDUSD,USDCAD,NZDUSD,XAUUSD"
-	for {
-		c, _, err := websocket.DefaultDialer.Dial(fxcmUrl, nil)
-		if err != nil {
-			log.Fatal("dial:", err)
-		}
-		_, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read error:", err)
-			return
-		}
-		str := string(message[:])
-		// log.Printf("recv: %s", str)
-		str = str[4 : len(str)-1]
-		// log.Printf("str after: %s", str)
-		// ssiData format = {SSI: [{"Symbol":?,"Time":?,},{},{}]
-		// }
-		var ssiData map[string][]map[string]interface{}
-		if err := json.Unmarshal([]byte(str), &ssiData); err != nil {
-			panic(err)
-		}
-		ssiArray := ssiData["SSI"]
-		timeString := time.Now().Format(time.RFC3339)
-		session := d.GetSession()
-
-		for _, ssi := range ssiArray {
-			// use time.Now replace the SSI given time. lazy to parse the format
-			// insert data to mongodb
-			collection := session.DB(dao.Database).C(ssi["Symbol"].(string))
-			data := bson.M{"SSIHistOrders": ssi["SSIHistOrders"], "Time": timeString}
-			err = collection.Insert(data)
+	done := make(chan struct{})
+	// main save data rule
+	go func() {
+		for {
+			defer close(done)
+			c, _, err := websocket.DefaultDialer.Dial(fxcmUrl, nil)
 			if err != nil {
-				log.Println("SSI ", ssi["Symbol"], ":", ssi["SSIHistOrders"], "; time:", timeString)
-				log.Println("insert error:", err)
+				log.Fatal("dial:", err)
+			}
+			ssiArray, err := parseSSIData(c)
+			if err != nil {
+				log.Fatal("Parse SSIData Error:", err)
 			}
 
+			// check data changing then save data to prevent weekend useless data
+			isSame := true
+			oldData := ssiArray[0]["SSIHistOrders"].(string)
+			for isSame == true {
+				time.Sleep(1 * time.Second)
+				ssiArray, _ := parseSSIData(c)
+				isSame = oldData == ssiArray[0]["SSIHistOrders"].(string)
+			}
+
+			saveDataToMongo(d, ssiArray)
+			c.Close()
+			log.Println("Save SSI Data success, sleep 1 hour!")
+			time.Sleep(1 * time.Hour)
 		}
-		session.Close()
+	}()
 
-		// sleep
-		// time.Sleep(10 * time.Second)
-		// log.Println("Sleep 10 Second")
-		c.Close()
-		log.Println(" Sleep 1 hour")
-		time.Sleep(1 * time.Hour)
+	// main controller
+	signal.Notify(interrupt, os.Interrupt)
+	for {
+		select {
+		case <-interrupt:
+			log.Println("interrupt")
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			return
+		}
 	}
-
-	// ticker := time.NewTicker(time.Second)
-	// defer ticker.Stop()
-
-	// for {
-	// 	select {
-	// 	case t := <-ticker.C:
-	// 		err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
-	// 		if err != nil {
-	// 			log.Println("write:", err)
-	// 			return
-	// 		}
-	// 	case <-interrupt:
-	// 		log.Println("interrupt")
-	// 		// To cleanly close a connection, a client should send a close
-	// 		// frame and wait for the server to close the connection.
-	// 		err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	// 		if err != nil {
-	// 			log.Println("write close:", err)
-	// 			return
-	// 		}
-	// 		select {
-	// 		case <-done:
-	// 		case <-time.After(time.Second):
-	// 		}
-	// 		c.Close()
-	// 		return
-	// 	}
-	// }
 }
