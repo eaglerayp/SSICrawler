@@ -21,7 +21,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-const fxcmUrl = "wss://streamssi.fxcorporate.com/streamssi/endpoint/EURUSD,GBPUSD,AUDUSD,USDCAD,NZDUSD,XAUUSD"
+const fxcmUrl = "wss://streamssi.fxcorporate.com/streamssi/endpoint/EURUSD,GBPUSD,AUDUSD,XAUUSD"
 
 func parseSSIData(c *websocket.Conn) ([]map[string]interface{}, error) {
 	_, message, err := c.ReadMessage()
@@ -60,7 +60,7 @@ func saveDataToMongo(d *dao.Resource, ssiArray []map[string]interface{}) {
 }
 
 func main() {
-	log.Println("Start: FXCM-SSI-WScrawler v1.0")
+	log.Println("Start: FXCM-SSI-WScrawler v1.0.1-20160515")
 	// config for mongodb
 	var cfgFile string
 	flag.StringVar(&cfgFile, "config", "./config.toml", "Path to Config File")
